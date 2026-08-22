@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ONLINE
+  OFFLINE
+  AWAY
+}
+
+enum ThreadType {
+  DIRECT
+  GROUP
+}
+
+enum ParticipantRole {
+  MEMBER
+  ADMIN
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+enum ContactStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum Platform {
+  ANDROID
+  IOS
+}
+
+model User {
+  id           String              @id @default(uuid()) @map("_id")
+  name         String
+  email        String              @unique
+  passwordHash String
+  avatarUrl    String?
+  bio          String?
+  status       UserStatus          @default(OFFLINE)
+  lastSeenAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  participants ThreadParticipant[]
+  sentMessages Message[]
+  contacts     Contact[]           @relation("UserContacts")
+  contactOf    Contact[]           @relation("ContactOfUsers")
+  deviceTokens DeviceToken[]
+}
+
+model ChatThread {
+  id            String              @id @default(uuid()) @map("_id")
+  type          ThreadType
+  name          String?
+  lastMessageId String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  participants  ThreadParticipant[]
+  messages      Message[]
+}
+
+model ThreadParticipant {
+  id          String          @id @default(uuid()) @map("_id")
+  threadId    String
+  userId      String
+  unreadCount Int             @default(0)
+  role        ParticipantRole @default(MEMBER)
+
+  thread      ChatThread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+}
+
+model Message {
+  id          String        @id @default(uuid()) @map("_id")
+  threadId    String
+  senderId    String
+  text        String?
+  messageType MessageType   @default(TEXT)
+  mediaUrl    String?
+  status      MessageStatus @default(SENT)
+  createdAt   DateTime      @default(now())
+
+  thread      ChatThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender      User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id            String        @id @default(uuid()) @map("_id")
+  userId        String
+  contactUserId String
+  status        ContactStatus
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User          @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+  contactUser   User          @relation("ContactOfUsers", fields: [contactUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contactUserId])
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid()) @map("_id")
+  userId    String
+  fcmToken  String
+  platform  Platform
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
