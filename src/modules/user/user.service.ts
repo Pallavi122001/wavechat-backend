@@ -1,32 +1,35 @@
-import { prisma } from '../../config/db';
+import { User } from '../../models';
 
 export class UserService {
-  static async searchUsers(query: string, currentUserId: string) {
-    if (!query || query.trim() === '') {
-      return [];
+  static async searchUsers(query?: string, currentUserId?: string) {
+    const filter: any = {};
+
+    if (currentUserId) {
+      filter._id = { $ne: currentUserId };
     }
 
-    const users = await prisma.user.findMany({
-      where: {
-        id: { not: currentUserId },
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { email: { contains: query, mode: 'insensitive' } },
-        ],
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-        bio: true,
-        status: true,
-        lastSeenAt: true,
-        createdAt: true,
-      },
-      take: 20,
-    });
+    if (query && query.trim() !== '') {
+      const regex = new RegExp(query.trim(), 'i');
+      filter.$or = [
+        { name: regex },
+        { email: regex },
+      ];
+    }
 
-    return users;
+    const users = await User.find(filter)
+      .select('_id name email avatarUrl bio status lastSeenAt createdAt')
+      .limit(50)
+      .lean();
+
+    return users.map((user: any) => ({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+      bio: user.bio,
+      status: user.status,
+      lastSeenAt: user.lastSeenAt,
+      createdAt: user.createdAt,
+    }));
   }
 }

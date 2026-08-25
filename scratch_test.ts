@@ -1,10 +1,12 @@
 import app from './src/app';
-import { prisma } from './src/config/db';
+import { connectDB, disconnectDB } from './src/config/db';
+import { User, ChatThread, ThreadParticipant, Message, Contact } from './src/models';
 
 const PORT = 3001;
 
 async function runTests() {
   console.log('🧪 Starting End-to-End API Verification...');
+  await connectDB();
   const server = app.listen(PORT);
 
   try {
@@ -175,15 +177,15 @@ async function runTests() {
   } finally {
     server.close();
     try {
-      await prisma.message.deleteMany({});
-      await prisma.threadParticipant.deleteMany({});
-      await prisma.chatThread.deleteMany({});
-      await prisma.contact.deleteMany({});
-      await prisma.user.deleteMany({});
+      await Message.deleteMany({});
+      await ThreadParticipant.deleteMany({});
+      await ChatThread.deleteMany({});
+      await Contact.deleteMany({});
+      await User.deleteMany({});
     } catch (e) {
-      // Ignore cleanup error if standalone MongoDB transactions aren't enabled
+      // Ignore cleanup error
     }
-    await prisma.$disconnect();
+    await disconnectDB();
     process.exit(0);
   }
 }

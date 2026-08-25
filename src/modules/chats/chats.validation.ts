@@ -10,7 +10,7 @@ export const createThreadSchema = z.object({
 export const sendMessageSchema = z.object({
   text: z.string().optional().nullable(),
   messageType: z.enum(['TEXT', 'IMAGE', 'FILE']).default('TEXT'),
-  mediaUrl: z.string().url().optional().nullable(),
+  mediaUrl: z.string().optional().nullable().transform((val) => (!val || val.trim() === '' ? null : val)),
 }).refine((data) => data.text || data.mediaUrl, {
   message: 'Message must contain either text or mediaUrl',
 });

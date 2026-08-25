@@ -4,8 +4,8 @@ export const registerSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters long'),
-  avatarUrl: z.string().url('Invalid avatar URL').optional().nullable(),
-  bio: z.string().optional().nullable(),
+  avatarUrl: z.string().optional().nullable().transform((val) => (!val || val.trim() === '' ? null : val)),
+  bio: z.string().optional().nullable().transform((val) => (!val || val.trim() === '' ? null : val)),
 });
 
 export const loginSchema = z.object({

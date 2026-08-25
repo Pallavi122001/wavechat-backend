@@ -32,23 +32,14 @@ export const errorHandler: ErrorRequestHandler = (
     return;
   }
 
-  // Handle Prisma Known Request Errors
-  if (err?.code && typeof err.code === 'string' && err.code.startsWith('P')) {
-    if (err.code === 'P2002') {
-      const target = err.meta?.target ? ` (${(err.meta.target as string[]).join(', ')})` : '';
-      res.status(409).json({
-        success: false,
-        message: `Unique constraint violation${target}`,
-      });
-      return;
-    }
-    if (err.code === 'P2025') {
-      res.status(404).json({
-        success: false,
-        message: 'Record not found',
-      });
-      return;
-    }
+  // Handle Mongoose Duplicate Key Error (E11000)
+  if (err?.code === 11000) {
+    const keys = Object.keys(err.keyValue || {}).join(', ');
+    res.status(409).json({
+      success: false,
+      message: keys ? `User with this ${keys} already exists` : 'Duplicate entry error',
+    });
+    return;
   }
 
   const statusCode = err.statusCode || 500;

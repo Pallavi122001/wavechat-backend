@@ -14,8 +14,7 @@ Node.js + Express + TypeScript + Prisma (MongoDB) backend API service for WaveCh
 - **Runtime:** Node.js
 - **Framework:** Express.js
 - **Language:** TypeScript
-- **Database ORM:** Prisma
-- **Database:** MongoDB
+- **Database:** MongoDB (via Mongoose)
 - **Authentication:** JWT (Short-lived 15m Access Token & 7d Refresh Token) + Bcrypt Password Hashing
 - **Validation:** Zod
 
@@ -40,24 +39,14 @@ PORT=3000
 
 ---
 
-## 📦 Setup & Database Schema Sync Steps
+## 📦 Setup & Development Steps
 
 1. **Install Dependencies:**
    ```bash
    npm install
    ```
 
-2. **Generate Prisma Client:**
-   ```bash
-   npx prisma generate
-   ```
-
-3. **Push Database Schema (MongoDB required):**
-   ```bash
-   npm run prisma:push
-   ```
-
-4. **Start Development Server:**
+2. **Start Development Server:**
    ```bash
    npm run dev
    ```

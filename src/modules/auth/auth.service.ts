@@ -1,14 +1,12 @@
 import bcrypt from 'bcryptjs';
-import { prisma } from '../../config/db';
+import { User } from '../../models';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/jwt';
 import { ConflictError, UnauthorizedError, NotFoundError } from '../../utils/errors';
 import { RegisterInput, LoginInput, RefreshTokenInput } from './auth.validation';
 
 export class AuthService {
   static async register(input: RegisterInput) {
-    const existingUser = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
-    });
+    const existingUser = await User.findOne({ email: input.email.toLowerCase() });
 
     if (existingUser) {
       throw new ConflictError('User with this email already exists');
@@ -16,17 +14,16 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(input.password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name: input.name,
-        email: input.email.toLowerCase(),
-        passwordHash,
-        avatarUrl: input.avatarUrl || null,
-        bio: input.bio || null,
-        status: 'ONLINE',
-      },
+    const userDoc = await User.create({
+      name: input.name,
+      email: input.email.toLowerCase(),
+      passwordHash,
+      avatarUrl: input.avatarUrl || null,
+      bio: input.bio || null,
+      status: 'ONLINE',
     });
 
+    const user = userDoc.toObject();
     const tokenPayload = { userId: user.id, email: user.email };
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
@@ -41,24 +38,21 @@ export class AuthService {
   }
 
   static async login(input: LoginInput) {
-    const user = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
-    });
+    const userDoc = await User.findOne({ email: input.email.toLowerCase() });
 
-    if (!user) {
+    if (!userDoc) {
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    const isPasswordValid = await bcrypt.compare(input.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(input.password, userDoc.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { status: 'ONLINE' },
-    });
+    userDoc.status = 'ONLINE';
+    await userDoc.save();
 
+    const user = userDoc.toObject();
     const tokenPayload = { userId: user.id, email: user.email };
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
@@ -80,15 +74,13 @@ export class AuthService {
       throw new UnauthorizedError('Invalid or expired refresh token');
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-    });
+    const userDoc = await User.findById(payload.userId);
 
-    if (!user) {
+    if (!userDoc) {
       throw new NotFoundError('User not found');
     }
 
-    const tokenPayload = { userId: user.id, email: user.email };
+    const tokenPayload = { userId: userDoc._id, email: userDoc.email };
     const accessToken = generateAccessToken(tokenPayload);
     const newRefreshToken = generateRefreshToken(tokenPayload);
 
@@ -100,12 +92,9 @@ export class AuthService {
 
   static async logout(userId: string) {
     if (userId) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          status: 'OFFLINE',
-          lastSeenAt: new Date(),
-        },
+      await User.findByIdAndUpdate(userId, {
+        status: 'OFFLINE',
+        lastSeenAt: new Date(),
       });
     }
     return { success: true };

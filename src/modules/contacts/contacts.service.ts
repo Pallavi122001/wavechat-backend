@@ -1,52 +1,45 @@
-import { prisma } from '../../config/db';
+import { Contact, User } from '../../models';
 import { BadRequestError, NotFoundError, ConflictError, ForbiddenError } from '../../utils/errors';
 
 export class ContactsService {
   static async getContacts(userId: string) {
-    const contacts = await prisma.contact.findMany({
-      where: {
-        OR: [
-          { userId },
-          { contactUserId: userId },
-        ],
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            bio: true,
-            status: true,
-            lastSeenAt: true,
-          },
-        },
-        contactUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            bio: true,
-            status: true,
-            lastSeenAt: true,
-          },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const contacts = await Contact.find({
+      $or: [{ userId }, { contactUserId: userId }],
+    })
+      .populate({
+        path: 'userId',
+        select: '_id name email avatarUrl bio status lastSeenAt',
+      })
+      .populate({
+        path: 'contactUserId',
+        select: '_id name email avatarUrl bio status lastSeenAt',
+      })
+      .sort({ updatedAt: -1 })
+      .lean();
 
-    return contacts.map((c) => {
-      const isInitiator = c.userId === userId;
-      const contactPerson = isInitiator ? c.contactUser : c.user;
+    return contacts.map((c: any) => {
+      const isInitiator = c.userId?._id === userId || c.userId === userId;
+      const rawContactUser = isInitiator ? c.contactUserId : c.userId;
+      
+      const contactUser = typeof rawContactUser === 'object' && rawContactUser !== null
+        ? {
+            id: rawContactUser._id,
+            name: rawContactUser.name,
+            email: rawContactUser.email,
+            avatarUrl: rawContactUser.avatarUrl,
+            bio: rawContactUser.bio,
+            status: rawContactUser.status,
+            lastSeenAt: rawContactUser.lastSeenAt,
+          }
+        : null;
+
       return {
-        id: c.id,
+        id: c._id,
         status: c.status,
         isInitiator,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
-        contactUser: contactPerson,
+        contactUser,
       };
     });
   }
@@ -56,21 +49,17 @@ export class ContactsService {
       throw new BadRequestError('Cannot add yourself as a contact');
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: contactUserId },
-    });
+    const targetUser = await User.findById(contactUserId);
 
     if (!targetUser) {
       throw new NotFoundError('Target user not found');
     }
 
-    const existingContact = await prisma.contact.findFirst({
-      where: {
-        OR: [
-          { userId, contactUserId },
-          { userId: contactUserId, contactUserId: userId },
-        ],
-      },
+    const existingContact = await Contact.findOne({
+      $or: [
+        { userId, contactUserId },
+        { userId: contactUserId, contactUserId: userId },
+      ],
     });
 
     if (existingContact) {
@@ -85,86 +74,104 @@ export class ContactsService {
       }
     }
 
-    const contact = await prisma.contact.create({
-      data: {
-        userId,
-        contactUserId,
-        status: 'PENDING',
-      },
-      include: {
-        contactUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            bio: true,
-            status: true,
-            lastSeenAt: true,
-          },
-        },
-      },
+    const newContact = await Contact.create({
+      userId,
+      contactUserId,
+      status: 'PENDING',
     });
 
-    return contact;
+    const populatedContact: any = await Contact.findById(newContact._id)
+      .populate({
+        path: 'contactUserId',
+        select: '_id name email avatarUrl bio status lastSeenAt',
+      })
+      .lean();
+
+    const contactUser = populatedContact.contactUserId;
+
+    return {
+      id: populatedContact._id,
+      userId: populatedContact.userId,
+      contactUserId: populatedContact.contactUserId?._id || populatedContact.contactUserId,
+      status: populatedContact.status,
+      createdAt: populatedContact.createdAt,
+      updatedAt: populatedContact.updatedAt,
+      contactUser: typeof contactUser === 'object' && contactUser !== null
+        ? {
+            id: contactUser._id,
+            name: contactUser.name,
+            email: contactUser.email,
+            avatarUrl: contactUser.avatarUrl,
+            bio: contactUser.bio,
+            status: contactUser.status,
+            lastSeenAt: contactUser.lastSeenAt,
+          }
+        : null,
+    };
   }
 
   static async acceptRequest(userId: string, id: string) {
-    let contact = await prisma.contact.findUnique({
-      where: { id },
-    });
+    let contactDoc = await Contact.findById(id);
 
-    if (!contact) {
-      contact = await prisma.contact.findFirst({
-        where: {
-          userId: id,
-          contactUserId: userId,
-          status: 'PENDING',
-        },
+    if (!contactDoc) {
+      contactDoc = await Contact.findOne({
+        userId: id,
+        contactUserId: userId,
+        status: 'PENDING',
       });
     }
 
-    if (!contact) {
+    if (!contactDoc) {
       throw new NotFoundError('Contact request not found');
     }
 
-    if (contact.contactUserId !== userId) {
+    if (contactDoc.contactUserId !== userId) {
       throw new ForbiddenError('You can only accept contact requests sent to you');
     }
 
-    if (contact.status === 'ACCEPTED') {
-      return contact;
+    if (contactDoc.status !== 'ACCEPTED') {
+      contactDoc.status = 'ACCEPTED';
+      await contactDoc.save();
     }
 
-    const updatedContact = await prisma.contact.update({
-      where: { id: contact.id },
-      data: { status: 'ACCEPTED' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            bio: true,
-            status: true,
-            lastSeenAt: true,
-          },
-        },
-        contactUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            bio: true,
-            status: true,
-            lastSeenAt: true,
-          },
-        },
-      },
-    });
+    const updatedContact: any = await Contact.findById(contactDoc._id)
+      .populate({
+        path: 'userId',
+        select: '_id name email avatarUrl bio status lastSeenAt',
+      })
+      .populate({
+        path: 'contactUserId',
+        select: '_id name email avatarUrl bio status lastSeenAt',
+      })
+      .lean();
 
-    return updatedContact;
+    return {
+      id: updatedContact._id,
+      status: updatedContact.status,
+      createdAt: updatedContact.createdAt,
+      updatedAt: updatedContact.updatedAt,
+      user: updatedContact.userId
+        ? {
+            id: updatedContact.userId._id,
+            name: updatedContact.userId.name,
+            email: updatedContact.userId.email,
+            avatarUrl: updatedContact.userId.avatarUrl,
+            bio: updatedContact.userId.bio,
+            status: updatedContact.userId.status,
+            lastSeenAt: updatedContact.userId.lastSeenAt,
+          }
+        : null,
+      contactUser: updatedContact.contactUserId
+        ? {
+            id: updatedContact.contactUserId._id,
+            name: updatedContact.contactUserId.name,
+            email: updatedContact.contactUserId.email,
+            avatarUrl: updatedContact.contactUserId.avatarUrl,
+            bio: updatedContact.contactUserId.bio,
+            status: updatedContact.contactUserId.status,
+            lastSeenAt: updatedContact.contactUserId.lastSeenAt,
+          }
+        : null,
+    };
   }
 }
